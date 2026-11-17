@@ -1,80 +1,53 @@
 # Benveniu Hotel
 
-Aplicación móvil desarrollada en Kotlin utilizando Jetpack Compose para la asignatura Aplicativos Móviles.
+Aplicación móvil desarrollada en **Kotlin con Jetpack Compose** para la asignatura **Aplicativos Móviles**.
 
-## Descripción del negocio
+**Versión:** Segundo corte académico.
 
-Benveniu Hotel es una aplicación orientada a la visualización y reserva de habitaciones de hotel.
+## Descripción del proyecto
 
-La aplicación permite al usuario explorar diferentes tipos de habitaciones, seleccionar la duración de su estadía, filtrar y ordenar las habitaciones disponibles, realizar reservas y consultar un resumen con el valor total de la estadía.
+Benveniu Hotel es una aplicación Android orientada a la consulta de habitaciones y gestión de reservas de un hotel.
 
-La interfaz utiliza una identidad visual inspirada en hoteles modernos y elegantes, con una paleta de colores basada en tonos café, beige y dorado.
+Permite explorar seis tipos de habitaciones, consultar sus características y precios, filtrar y ordenar el catálogo, registrar reservas, modificarlas, cancelarlas y consultar su historial.
+
+La aplicación incorpora una base de datos local mediante **Room**, que permite conservar la información de las reservas entre sesiones.
+
+Su interfaz utiliza una identidad visual inspirada en hoteles modernos, con tonos café, beige y dorado.
 
 ---
 
-## Objetivo de la aplicación
+## Objetivo
 
-Desarrollar una primera versión funcional de una aplicación móvil para un hotel utilizando Kotlin y Jetpack Compose.
+Desarrollar una aplicación móvil funcional que integre una interfaz moderna con una arquitectura organizada y almacenamiento persistente.
 
-La aplicación busca demostrar el uso de:
+El proyecto evoluciona desde una primera versión basada en estados de Jetpack Compose hasta una segunda versión que incorpora Room, operaciones CRUD y separación de responsabilidades mediante Repository y ViewModel.
 
+## Tecnologías utilizadas
+
+- Kotlin.
 - Jetpack Compose.
-- Material 3.
+- Material Design 3.
 - Navigation Compose.
-- Manejo de estados.
-- Eventos.
-- LazyColumn y LazyRow.
-- Componentes reutilizables.
-- Colecciones de datos.
-- Temas claro y oscuro.
+- Room y SQLite.
+- DAO (Data Access Object).
+- Repository.
+- ViewModel.
+- Flow y StateFlow.
+- Gradle.
 
 ---
 
-## Pantallas implementadas
-
-La aplicación cuenta con tres pantallas principales.
+## Pantallas principales
 
 ### 1. Inicio
 
-Pantalla principal de bienvenida al hotel.
-
-Permite:
-
-- Visualizar información general del hotel.
-- Consultar la cantidad de habitaciones seleccionadas.
-- Ver una habitación destacada.
-- Acceder directamente al catálogo de habitaciones.
+Pantalla de bienvenida que presenta la identidad visual de Benveniu Hotel, información general y acceso al catálogo de habitaciones.
 
 ### 2. Habitaciones
 
-Pantalla principal del catálogo.
+Permite consultar las habitaciones disponibles, seleccionar la duración de la estadía, filtrar por categoría y ordenar los resultados.
 
-Permite:
-
-- Visualizar las habitaciones disponibles.
-- Seleccionar la cantidad de noches.
-- Filtrar las habitaciones por categoría.
-- Ordenar las habitaciones por precio o nombre.
-- Consultar precio, capacidad y disponibilidad.
-- Reservar o cancelar una habitación.
-
-### 3. Mis Reservas
-
-Pantalla en la que se muestran las habitaciones seleccionadas por el usuario.
-
-Permite:
-
-- Consultar las habitaciones reservadas.
-- Visualizar la duración de la estadía.
-- Consultar el valor individual de cada habitación.
-- Consultar el valor total de la reserva.
-- Cancelar habitaciones reservadas.
-
----
-
-## Habitaciones disponibles
-
-El catálogo incluye las siguientes habitaciones:
+El catálogo incluye:
 
 1. Habitación Individual.
 2. Habitación Doble.
@@ -83,99 +56,160 @@ El catálogo incluye las siguientes habitaciones:
 5. Suite Junior.
 6. Suite Presidencial.
 
-Cada habitación se genera dinámicamente a partir de una colección de objetos de la clase `Habitacion`.
+### 3. Mis Reservas
+
+Permite administrar las reservas mediante dos secciones:
+
+**Activas:** muestra las reservas vigentes, sus características y los resúmenes de estadía.
+
+**Historial:** permite consultar las reservas canceladas y eliminarlas cuando corresponda.
 
 ---
 
-## Funcionalidades interactivas
+## Funcionalidades del primer corte
 
-### Funcionalidad trabajada en clase: reservar y cancelar habitaciones
+- Catálogo de habitaciones.
+- Filtros por categoría.
+- Ordenamiento por precio o nombre.
+- Selección de noches.
+- Cálculo del valor de la estadía.
+- Navegación entre pantallas.
+- Componentes reutilizables.
+- Tema claro y oscuro.
 
-El usuario puede agregar una habitación a sus reservas y posteriormente cancelarla.
+## Funcionalidades del segundo corte
 
-El estado de las habitaciones reservadas se almacena utilizando `remember` y `mutableStateOf`.
+### 1. Registrar reservas
 
-La interfaz se actualiza automáticamente cuando cambia el estado.
+Permite crear una reserva seleccionando una habitación e ingresando los datos solicitados.
+
+### 2. Consultar reservas
+
+Muestra las reservas almacenadas, incluyendo la información del huésped y la estadía.
+
+### 3. Editar reservas
+
+Permite modificar los datos de una reserva existente.
+
+### 4. Eliminar reservas
+
+Permite eliminar registros mediante una acción de eliminación con confirmación.
+
+### 5. Cancelar reservas
+
+Permite cambiar el estado de una reserva activa a cancelada.
+
+### 6. Historial de reservas
+
+Las reservas canceladas pueden consultarse desde la pestaña Historial.
+
+### 7. Persistencia de datos
+
+Las reservas se almacenan mediante Room y permanecen disponibles después de cerrar y volver a abrir la aplicación, mientras se conserven sus datos locales.
 
 ---
 
-### Funcionalidad nueva 1: filtro por categorías
+## Arquitectura del proyecto
 
-El usuario puede seleccionar una categoría para visualizar únicamente las habitaciones correspondientes.
+La aplicación utiliza una organización basada en capas.
 
-Las categorías disponibles son:
+### Capa de datos
 
-- Todas.
-- Individual.
-- Doble.
-- Matrimonial.
-- Familiar.
-- Suites.
+**Entidades:**
+- `HabitacionEntity.kt`
+- `ReservaEntity.kt`
 
-La lista se actualiza dinámicamente dependiendo de la categoría seleccionada.
+**Acceso a datos:**
+- `HabitacionDao.kt`
+- `ReservaDao.kt`
 
----
+**Base de datos:**
+- `HotelDatabase.kt`
 
-### Funcionalidad nueva 2: ordenamiento de habitaciones
+**Repositorio:**
+- `HotelRepository.kt`
 
-El usuario puede modificar el orden en el que aparecen las habitaciones.
+### Lógica y estado
 
-Las opciones disponibles son:
+`HotelViewModel.kt` conecta la interfaz con las operaciones de datos y gestiona el estado utilizado por las pantallas.
 
-- Orden normal.
-- Precio de menor a mayor.
-- Precio de mayor a menor.
-- Nombre.
+### Interfaz de usuario
 
-El ordenamiento se realiza dinámicamente utilizando las funciones de colecciones de Kotlin.
+La interfaz está desarrollada mediante Jetpack Compose, con componentes y navegación adaptados a las funcionalidades del hotel.
 
 ---
 
-## Funcionalidades adicionales
+## Instrucciones de instalación
 
-Además de las tres funcionalidades principales, la aplicación incluye:
+### Requisitos
+
+- Android Studio.
+- Android SDK.
+- Dispositivo Android compatible con API 24 o superior.
+
+### Generar el APK
+
+Desde la raíz del proyecto, ejecutar en Windows:
+
+```powershell
+.\gradlew.bat assembleDebug
+```
+
+El APK generado se encuentra normalmente en:
+
+```text
+app/build/outputs/apk/debug/app-debug.apk
+```
+
+Transferir el archivo al dispositivo Android e instalarlo siguiendo las indicaciones del sistema.
+
+El APK de depuración está destinado a pruebas académicas, no a distribución mediante Google Play.
+
+---
+
+## Pasos para probar la aplicación
+
+1. Abrir Benveniu Hotel.
+2. Acceder al catálogo de habitaciones.
+3. Aplicar filtros y cambiar el ordenamiento.
+4. Seleccionar una habitación y registrar una reserva.
+5. Entrar en Mis Reservas y comprobar que aparece en Activas.
+6. Editar la reserva y verificar que se actualizan sus datos.
+7. Cerrar completamente la aplicación y volver a abrirla.
+8. Confirmar que la reserva continúa almacenada.
+9. Cancelar la reserva y comprobar que aparece en Historial.
+10. Eliminar una reserva y verificar que desaparece de la lista correspondiente.
 
 ---
 
 ## Capturas de pantalla
 
-A continuación se muestran las principales pantallas de la aplicación Benveniu Hotel.
-
-### Pantalla de inicio
-
-La pantalla principal presenta la identidad del hotel, la habitación destacada y el acceso al catálogo.
+### Inicio
 
 ![Pantalla de inicio](screenshots/inicio.png)
 
 ### Catálogo de habitaciones
 
-En esta pantalla el usuario puede seleccionar la duración de la estadía, filtrar las habitaciones por categoría y ordenarlas por precio o nombre.
+![Catálogo de habitaciones](screenshots/habitaciones.png)
 
-![Pantalla de habitaciones](screenshots/habitaciones.png)
-
-### Mis reservas
-
-La pantalla de reservas muestra las habitaciones seleccionadas, el número de noches y el valor total de la estadía.
+### Mis Reservas
 
 ![Pantalla de reservas](screenshots/reservas.png)
 
 ### Tema claro
 
-La aplicación permite cambiar manualmente entre tema oscuro y tema claro utilizando el botón ubicado en la barra superior.
-
 ![Tema claro](screenshots/tema_claro.png)
+
+Las capturas corresponden a la documentación visual del proyecto y pueden actualizarse para reflejar la interfaz del segundo corte.
 
 ---
 
-### Selección de noches
+## Repositorio
 
-El usuario puede aumentar o disminuir la cantidad de noches de la estadía mediante los botones `+` y `-`.
+[Benveniu Hotel — GitHub](https://github.com/Samuel-Tovar/benveniu-hotel-catalog)
 
-El precio total de cada habitación se actualiza automáticamente.
+## Contexto académico
 
-### Cálculo automático del total
+Proyecto desarrollado para la asignatura **Aplicativos Móviles**, como evolución de la aplicación presentada en el primer corte.
 
-La aplicación calcula el valor de la habitación mediante:
-
-```kotlin
-val total = habitacion.precio * noches
+La segunda entrega incorpora arquitectura de datos, persistencia local y gestión de reservas mediante operaciones CRUD.
