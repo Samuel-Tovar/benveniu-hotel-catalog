@@ -1,6 +1,9 @@
 package com.example.hotelcatalog
 
 import android.os.Bundle
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
@@ -43,13 +46,24 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import com.example.hotelcatalog.ui.theme.HotelAvailable
 import com.example.hotelcatalog.ui.theme.HotelCatalogTheme
 import com.example.hotelcatalog.ui.theme.HotelGold
 import com.example.hotelcatalog.ui.theme.HotelReserved
 import com.example.hotelcatalog.ui.theme.HotelUnavailable
 import com.example.hotelcatalog.ui.theme.HotelWhite
+import com.example.hotelcatalog.data.HotelDatabase
+import com.example.hotelcatalog.data.HotelRepository
+import com.example.hotelcatalog.viewmodel.HotelViewModel
+import com.example.hotelcatalog.viewmodel.HotelViewModelFactory
+import com.example.hotelcatalog.data.ReservaEntity
 import java.util.Locale
+import java.time.LocalDate
+import java.time.format.DateTimeParseException
+import java.time.temporal.ChronoUnit
 
 
 // =====================================================
@@ -72,17 +86,35 @@ data class Habitacion(
 // MAIN ACTIVITY
 // =====================================================
 
+
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setContent {
+        val database = HotelDatabase.obtenerDatabase(
+            applicationContext
+        )
 
-            HotelCatalogApp()
+        val repository = HotelRepository(
+            habitacionDao = database.habitacionDao(),
+            reservaDao = database.reservaDao()
+        )
+
+        val factory = HotelViewModelFactory(repository)
+
+        setContent {
+            val hotelViewModel: HotelViewModel = viewModel(
+                factory = factory
+            )
+
+            HotelCatalogApp(
+                hotelViewModel = hotelViewModel
+            )
         }
     }
 }
+
 
 
 // =====================================================
@@ -90,7 +122,9 @@ class MainActivity : ComponentActivity() {
 // =====================================================
 
 @Composable
-fun HotelCatalogApp() {
+fun HotelCatalogApp(
+    hotelViewModel: HotelViewModel
+) {
 
     val temaSistemaOscuro = isSystemInDarkTheme()
 
@@ -105,6 +139,7 @@ fun HotelCatalogApp() {
 
         BenveniuHotelApp(
             temaOscuro = temaOscuro,
+            hotelViewModel = hotelViewModel,
 
             onCambiarTema = {
                 temaOscuro = !temaOscuro
@@ -121,10 +156,26 @@ fun HotelCatalogApp() {
 @Composable
 fun BenveniuHotelApp(
     temaOscuro: Boolean,
+    hotelViewModel: HotelViewModel,
     onCambiarTema: () -> Unit
 ) {
 
     val navController = rememberNavController()
+    LaunchedEffect(hotelViewModel) {
+        hotelViewModel.cargarHabitacionesIniciales()
+    }
+
+    var habitacionParaReservar by remember {
+        mutableStateOf<Habitacion?>(null)
+    }
+
+    var reservaParaEditar by remember {
+        mutableStateOf<ReservaEntity?>(null)
+    }
+
+    var reservaParaEliminar by remember {
+        mutableStateOf<ReservaEntity?>(null)
+    }
 
 
     // =================================================
@@ -136,9 +187,24 @@ fun BenveniuHotelApp(
     }
 
 
-    var habitacionesReservadas by remember {
-        mutableStateOf(setOf<String>())
-    }
+
+    val reservasGuardadas by hotelViewModel.reservas.collectAsState()
+
+    val habitacionesReservadas = reservasGuardadas
+        .filter { it.estado == "Activa" }
+        .mapNotNull { reserva ->
+            when (reserva.habitacionId) {
+                1 -> "Habitación Individual"
+                2 -> "Habitación Doble"
+                3 -> "Habitación Matrimonial"
+                4 -> "Habitación Familiar"
+                5 -> "Suite Junior"
+                6 -> "Suite Presidencial"
+                else -> null
+            }
+        }
+        .toSet()
+
 
 
     // =================================================
@@ -215,6 +281,106 @@ fun BenveniuHotelApp(
             imagen = R.drawable.suite_presidencial
         )
     )
+
+    reservaParaEditar?.let { reserva ->
+        FormularioEditarReservaDialog(
+            reserva = reserva,
+            onGuardar = { reservaActualizada ->
+
+                hotelViewModel.actualizarReserva(reservaActualizada)
+
+                reservaParaEditar = null
+            },
+            onCerrar = {
+                reservaParaEditar = null
+            }
+        )
+    }
+
+    reservaParaEliminar?.let { reserva ->
+
+        AlertDialog(
+            onDismissRequest = {
+                reservaParaEliminar = null
+            },
+
+            title = {
+                Text("Eliminar reserva")
+            },
+
+            text = {
+                Text(
+                    "¿Estás seguro de que deseas eliminar " +
+                            "la reserva de ${reserva.nombreHuesped}? " +
+                            "Esta acción no se puede deshacer."
+                )
+            },
+
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        hotelViewModel.eliminarReserva(reserva)
+                        reservaParaEliminar = null
+                    }
+                ) {
+                    Text(
+                        text = "Eliminar",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        reservaParaEliminar = null
+                    }
+                ) {
+                    Text("Volver")
+                }
+            }
+        )
+    }
+
+
+    habitacionParaReservar?.let { habitacion ->
+
+        FormularioReservaDialog(
+            nombreHabitacion = habitacion.nombre,
+
+            onConfirmar = { nombre, entrada, salida ->
+
+                val habitacionId = when (habitacion.nombre) {
+                    "Habitación Individual" -> 1
+                    "Habitación Doble" -> 2
+                    "Habitación Matrimonial" -> 3
+                    "Habitación Familiar" -> 4
+                    "Suite Junior" -> 5
+                    "Suite Presidencial" -> 6
+                    else -> 0
+                }
+
+                if (habitacionId != 0) {
+
+                    hotelViewModel.insertarReserva(
+                        ReservaEntity(
+                            habitacionId = habitacionId,
+                            nombreHuesped = nombre,
+                            fechaEntrada = entrada,
+                            fechaSalida = salida,
+                            estado = "Activa"
+                        )
+                    )
+                }
+
+                habitacionParaReservar = null
+            },
+
+            onCerrar = {
+                habitacionParaReservar = null
+            }
+        )
+    }
 
 
     // =================================================
@@ -473,26 +639,40 @@ fun BenveniuHotelApp(
                         }
                     },
 
+
+
                     onCambiarReserva = { habitacion ->
 
-                        if (
-                            habitacion.nombre
-                            in habitacionesReservadas
-                        ) {
+                        val habitacionId = when (habitacion.nombre) {
+                            "Habitación Individual" -> 1
+                            "Habitación Doble" -> 2
+                            "Habitación Matrimonial" -> 3
+                            "Habitación Familiar" -> 4
+                            "Suite Junior" -> 5
+                            "Suite Presidencial" -> 6
+                            else -> 0
+                        }
 
-                            habitacionesReservadas =
-                                habitacionesReservadas -
-                                        habitacion.nombre
+                        val reservaExistente = reservasGuardadas.find {
+                            it.habitacionId == habitacionId &&
+                                    it.estado == "Activa"
+                        }
 
-                        } else if (
-                            habitacion.disponible
-                        ) {
+                        if (reservaExistente != null) {
 
-                            habitacionesReservadas =
-                                habitacionesReservadas +
-                                        habitacion.nombre
+                            // Cancelar una reserva existente
+                            hotelViewModel.cambiarEstadoReserva(
+                                reservaExistente.id,
+                                "Cancelada"
+                            )
+
+                        } else if (habitacion.disponible && habitacionId != 0) {
+
+                            // Abrir formulario para una reserva nueva
+                            habitacionParaReservar = habitacion
                         }
                     }
+
                 )
             }
 
@@ -504,20 +684,42 @@ fun BenveniuHotelApp(
             composable("reservas") {
 
                 ReservasScreen(
-                    habitaciones =
-                        habitaciones,
+                    habitaciones = habitaciones,
+                    habitacionesReservadas = habitacionesReservadas,
+                    reservasGuardadas = reservasGuardadas,
+                    noches = noches,
 
-                    habitacionesReservadas =
-                        habitacionesReservadas,
+                    onEditarReserva = { reserva ->
+                        reservaParaEditar = reserva
+                    },
 
-                    noches =
-                        noches,
+                    onEliminarReserva = { reserva ->
+                        reservaParaEliminar = reserva
+                    },
 
                     onCancelarReserva = { habitacion ->
 
-                        habitacionesReservadas =
-                            habitacionesReservadas -
-                                    habitacion.nombre
+                        val habitacionId = when (habitacion.nombre) {
+                            "Habitación Individual" -> 1
+                            "Habitación Doble" -> 2
+                            "Habitación Matrimonial" -> 3
+                            "Habitación Familiar" -> 4
+                            "Suite Junior" -> 5
+                            "Suite Presidencial" -> 6
+                            else -> 0
+                        }
+
+                        val reserva = reservasGuardadas.find {
+                            it.habitacionId == habitacionId &&
+                                    it.estado == "Activa"
+                        }
+
+                        if (reserva != null) {
+                            hotelViewModel.cambiarEstadoReserva(
+                                reserva.id,
+                                "Cancelada"
+                            )
+                        }
                     },
 
                     onIrHabitaciones = {
@@ -1337,8 +1539,11 @@ fun HabitacionesScreen(
 fun ReservasScreen(
     habitaciones: List<Habitacion>,
     habitacionesReservadas: Set<String>,
+    reservasGuardadas: List<ReservaEntity>,
     noches: Int,
     onCancelarReserva: (Habitacion) -> Unit,
+    onEditarReserva: (ReservaEntity) -> Unit,
+    onEliminarReserva: (ReservaEntity) -> Unit,
     onIrHabitaciones: () -> Unit
 ) {
 
@@ -1358,12 +1563,84 @@ fun ReservasScreen(
     // TOTAL GENERAL
     // =================================================
 
-    val totalGeneral =
-        reservas.sumOf {
 
-            it.precio * noches
+    val reservasActivas = reservasGuardadas.filter {
+        it.estado == "Activa"
+    }
+
+    val reservasCanceladas = reservasGuardadas.filter {
+        it.estado == "Cancelada"
+    }
+
+    var mostrarHistorial by remember {
+        mutableStateOf(false)
+    }
+
+    val reservasMostradas = if (mostrarHistorial) {
+        reservasCanceladas
+    } else {
+        reservasActivas
+    }
+
+    val cantidadMostrada = reservasMostradas.size
+
+    val nochesMostradas = reservasMostradas.sumOf { reserva ->
+        calcularNochesReserva(
+            reserva.fechaEntrada,
+            reserva.fechaSalida
+        ).toInt()
+    }
+
+    val totalMostrado = reservasMostradas.sumOf { reserva ->
+        val precioHabitacion = habitaciones.find { habitacion ->
+            val id = when (habitacion.nombre) {
+                "Habitación Individual" -> 1
+                "Habitación Doble" -> 2
+                "Habitación Matrimonial" -> 3
+                "Habitación Familiar" -> 4
+                "Suite Junior" -> 5
+                "Suite Presidencial" -> 6
+                else -> 0
+            }
+            id == reserva.habitacionId
+        }?.precio ?: 0
+
+        precioHabitacion * calcularNochesReserva(
+            reserva.fechaEntrada,
+            reserva.fechaSalida
+        ).toInt()
+    }
+
+    val totalNoches: Int = reservasActivas.sumOf { reserva ->
+        calcularNochesReserva(
+            reserva.fechaEntrada,
+            reserva.fechaSalida
+        ).toInt()
+    }
+
+    val totalGeneral: Int = reservasActivas.sumOf { reserva ->
+
+        val habitacion = habitaciones.find { habitacion ->
+            val habitacionId = when (habitacion.nombre) {
+                "Habitación Individual" -> 1
+                "Habitación Doble" -> 2
+                "Habitación Matrimonial" -> 3
+                "Habitación Familiar" -> 4
+                "Suite Junior" -> 5
+                "Suite Presidencial" -> 6
+                else -> 0
+            }
+
+            habitacionId == reserva.habitacionId
         }
 
+        val nochesReserva = calcularNochesReserva(
+            reserva.fechaEntrada,
+            reserva.fechaSalida
+        ).toInt()
+
+        (habitacion?.precio ?: 0) * nochesReserva
+    }
 
     // =================================================
     // INTERFAZ
@@ -1426,7 +1703,7 @@ fun ReservasScreen(
         // =================================================
 
         if (
-            reservas.isEmpty()
+            reservasGuardadas.isEmpty()
         ) {
 
             item {
@@ -1530,7 +1807,8 @@ fun ReservasScreen(
 
                         Text(
                             text =
-                                "Resumen de la reserva",
+                                if (mostrarHistorial) "Resumen del historial"
+                                else "Resumen de reservas activas",
 
                             style =
                                 MaterialTheme.typography.titleLarge,
@@ -1545,34 +1823,24 @@ fun ReservasScreen(
 
                         Text(
                             text =
-                                "Habitaciones: ${reservas.size}",
+                                "Reservas: $cantidadMostrada",
 
                             color =
                                 MaterialTheme.colorScheme.onSurface
                         )
 
 
+
                         Text(
-                            text =
-                                if (
-                                    noches == 1
-                                ) {
-
-                                    "Estadía: 1 noche"
-
-                                } else {
-
-                                    "Estadía: $noches noches"
-                                },
-
-                            color =
-                                MaterialTheme.colorScheme.onSurface
+                            text = "Noches registradas: $nochesMostradas",
+                            color = MaterialTheme.colorScheme.onSurface
                         )
 
 
+
                         Text(
                             text =
-                                "Total: ${formatearPrecio(totalGeneral)} COP",
+                                "Valor total: ${formatearPrecio(totalMostrado)} COP",
 
                             style =
                                 MaterialTheme.typography.titleMedium,
@@ -1587,32 +1855,115 @@ fun ReservasScreen(
                 }
             }
 
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            mostrarHistorial = false
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (!mostrarHistorial)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (!mostrarHistorial)
+                                MaterialTheme.colorScheme.onPrimary
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    ) {
+                        Text("Activas")
+                    }
+
+                    Button(
+                        onClick = {
+                            mostrarHistorial = true
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (mostrarHistorial)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (mostrarHistorial)
+                                MaterialTheme.colorScheme.onPrimary
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    ) {
+                        Text("Historial")
+                    }
+                }
+            }
+
 
             // =================================================
             // CARDS DE RESERVAS
             // =================================================
 
-            items(
-                reservas
-            ) { habitacion ->
+            if (reservasMostradas.isEmpty()) {
+                item {
+                    Text(
+                        text = if (mostrarHistorial)
+                            "No tienes reservas canceladas."
+                        else
+                            "No tienes reservas activas.",
 
-                HabitacionCard(
-                    habitacion =
-                        habitacion,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            }
 
-                    noches =
-                        noches,
+            items(reservasMostradas) { reserva ->
 
-                    reservada =
-                        true,
-
-                    onCambiarReserva = {
-
-                        onCancelarReserva(
-                            habitacion
-                        )
+                val habitacion = habitaciones.find { habitacion ->
+                    val habitacionId = when (habitacion.nombre) {
+                        "Habitación Individual" -> 1
+                        "Habitación Doble" -> 2
+                        "Habitación Matrimonial" -> 3
+                        "Habitación Familiar" -> 4
+                        "Suite Junior" -> 5
+                        "Suite Presidencial" -> 6
+                        else -> 0
                     }
-                )
+
+                    habitacionId == reserva.habitacionId
+                }
+
+                if (habitacion != null) {
+
+                    val nochesReserva = calcularNochesReserva(
+                        reserva.fechaEntrada,
+                        reserva.fechaSalida
+                    )
+
+                    HabitacionCard(
+                        habitacion = habitacion,
+                        noches = nochesReserva.toInt(),
+                        reservada = !mostrarHistorial,
+                        onCambiarReserva = {
+                            if (!mostrarHistorial) {
+                                onCancelarReserva(habitacion)
+                            }
+                        },
+                        reserva = reserva,
+                        onEditarReserva = if (!mostrarHistorial) {
+                            { onEditarReserva(reserva) }
+                        } else {
+                            null
+                        },
+                        onEliminarReserva = {
+                            onEliminarReserva(reserva)
+                        },
+                        mostrarBotonReserva = !mostrarHistorial
+                    )
+                }
             }
         }
     }
@@ -1628,7 +1979,11 @@ fun HabitacionCard(
     habitacion: Habitacion,
     noches: Int,
     reservada: Boolean,
-    onCambiarReserva: () -> Unit
+    onCambiarReserva: () -> Unit,
+    reserva: ReservaEntity? = null,
+    onEditarReserva: (() -> Unit)? = null,
+    onEliminarReserva: (() -> Unit)? = null,
+    mostrarBotonReserva: Boolean = true
 ) {
 
 
@@ -1820,6 +2175,32 @@ fun HabitacionCard(
                 )
 
 
+                if (reserva != null) {
+
+                    Text(
+                        text = "Huésped: ${reserva.nombreHuesped}",
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Text(
+                        text = "Entrada: ${reserva.fechaEntrada}",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Text(
+                        text = "Salida: ${reserva.fechaSalida}",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Text(
+                        text = "Duración: $noches noche(s)",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+
+
                 Text(
                     text =
                         habitacion.descripcion,
@@ -1888,46 +2269,71 @@ fun HabitacionCard(
                 // =================================================
 
                 Text(
-                    text =
-                        when {
+                    text = when {
+                        reserva?.estado == "Cancelada" ->
+                            "Cancelada"
 
-                            reservada ->
+                        reservada ->
+                            "En reserva"
 
-                                "En reserva"
+                        habitacion.disponible ->
+                            "Disponible"
 
-                            habitacion.disponible ->
-
-                                "Disponible"
-
-                            else ->
-
-                                "No disponible"
-                        },
+                        else ->
+                            "No disponible"
+                    },
 
                     fontWeight =
                         FontWeight.Bold,
 
-                    color =
-                        when {
+                    color = when {
+                        reserva?.estado == "Cancelada" ->
+                            MaterialTheme.colorScheme.error
 
-                            reservada ->
+                        reservada ->
+                            HotelReserved
 
-                                HotelReserved
+                        habitacion.disponible ->
+                            HotelAvailable
 
-                            habitacion.disponible ->
-
-                                HotelAvailable
-
-                            else ->
-
-                                HotelUnavailable
-                        }
+                        else ->
+                            HotelUnavailable
+                    }
                 )
 
 
                 // =================================================
                 // BOTÓN RESERVAR
                 // =================================================
+
+
+                if (reserva != null && onEditarReserva != null) {
+                    Button(
+                        onClick = onEditarReserva,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondary,
+                            contentColor = MaterialTheme.colorScheme.onSecondary
+                        )
+                    ) {
+                        Text("✏ Editar reserva")
+                    }
+                }
+
+                if (reserva != null && onEliminarReserva != null) {
+                    Button(
+                        onClick = onEliminarReserva,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError
+                        )
+                    ) {
+                        Text("Eliminar reserva")
+                    }
+                }
+
+                if (mostrarBotonReserva) {
 
                 Button(
                     onClick =
@@ -1988,6 +2394,7 @@ fun HabitacionCard(
                                     "No disponible"
                             }
                     )
+                  }
                 }
             }
         }
@@ -2065,4 +2472,315 @@ fun formatearPrecio(
             ",",
             "."
         )
+}
+
+@Composable
+fun FormularioReservaDialog(
+    nombreHabitacion: String,
+    onConfirmar: (
+        nombreHuesped: String,
+        fechaEntrada: String,
+        fechaSalida: String
+    ) -> Unit,
+    onCerrar: () -> Unit
+) {
+
+    var nombreHuesped by remember {
+        mutableStateOf("")
+    }
+
+    var fechaEntrada by remember {
+        mutableStateOf("")
+    }
+
+    var fechaSalida by remember {
+        mutableStateOf("")
+    }
+
+    var errorFechas by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    AlertDialog(
+        onDismissRequest = onCerrar,
+
+        title = {
+            Text("Nueva reserva")
+        },
+
+        text = {
+            Column(
+                verticalArrangement =
+                    Arrangement.spacedBy(12.dp)
+            ) {
+
+                Text(
+                    text = nombreHabitacion,
+                    fontWeight = FontWeight.Bold
+                )
+
+                OutlinedTextField(
+                    value = nombreHuesped,
+                    onValueChange = {
+                        nombreHuesped = it
+                    },
+                    label = {
+                        Text("Nombre del huésped")
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = fechaEntrada,
+                    onValueChange = {
+                        fechaEntrada = it
+                    },
+                    label = {
+                        Text("Fecha de entrada")
+                    },
+                    placeholder = {
+                        Text("AAAA-MM-DD")
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = fechaSalida,
+                    onValueChange = {
+                        fechaSalida = it
+                    },
+                    label = {
+                        Text("Fecha de salida")
+                    },
+                    placeholder = {
+                        Text("AAAA-MM-DD")
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                // MENSAJE DE ERROR
+                errorFechas?.let { mensaje ->
+                    Text(
+                        text = mensaje,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+
+
+        confirmButton = {
+            TextButton(
+                onClick = {
+
+                    val error = validarFechasReserva(
+                        fechaEntrada.trim(),
+                        fechaSalida.trim()
+                    )
+
+                    if (error == null) {
+
+                        onConfirmar(
+                            nombreHuesped.trim(),
+                            fechaEntrada.trim(),
+                            fechaSalida.trim()
+                        )
+
+                    } else {
+
+                        errorFechas = error
+
+                    }
+                },
+
+                enabled =
+                    nombreHuesped.isNotBlank() &&
+                            fechaEntrada.isNotBlank() &&
+                            fechaSalida.isNotBlank()
+
+            ) {
+                Text("Confirmar reserva")
+            }
+        },
+
+
+        dismissButton = {
+            TextButton(
+                onClick = onCerrar
+            ) {
+                Text("Cancelar")
+            }
+        }
+    )
+}
+
+fun validarFechasReserva(
+    entrada: String,
+    salida: String
+): String? {
+
+    return try {
+
+        val fechaEntrada = LocalDate.parse(entrada)
+        val fechaSalida = LocalDate.parse(salida)
+        val fechaActual = LocalDate.now()
+
+        when {
+            fechaEntrada.isBefore(fechaActual) ->
+                "La fecha de entrada no puede ser anterior a hoy."
+
+            !fechaSalida.isAfter(fechaEntrada) ->
+                "La fecha de salida debe ser posterior a la entrada."
+
+            else -> null
+        }
+
+    } catch (e: DateTimeParseException) {
+        "Ingresa fechas válidas en formato AAAA-MM-DD."
+    }
+}
+
+fun calcularNochesReserva(
+    entrada: String,
+    salida: String
+): Long {
+    return try {
+        val fechaEntrada = LocalDate.parse(entrada)
+        val fechaSalida = LocalDate.parse(salida)
+
+        ChronoUnit.DAYS.between(
+            fechaEntrada,
+            fechaSalida
+        ).coerceAtLeast(0L)
+
+    } catch (_: DateTimeParseException) {
+        0L
+    }
+}
+
+@Composable
+fun FormularioEditarReservaDialog(
+    reserva: ReservaEntity,
+    onGuardar: (ReservaEntity) -> Unit,
+    onCerrar: () -> Unit
+) {
+    var nombreHuesped by remember(reserva.id) {
+        mutableStateOf(reserva.nombreHuesped)
+    }
+
+    var fechaEntrada by remember(reserva.id) {
+        mutableStateOf(reserva.fechaEntrada)
+    }
+
+    var fechaSalida by remember(reserva.id) {
+        mutableStateOf(reserva.fechaSalida)
+    }
+
+    var errorFechas by remember(reserva.id) {
+        mutableStateOf<String?>(null)
+    }
+
+    AlertDialog(
+        onDismissRequest = onCerrar,
+
+        title = {
+            Text("Editar reserva")
+        },
+
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = nombreHuesped,
+                    onValueChange = {
+                        nombreHuesped = it
+                    },
+                    label = {
+                        Text("Nombre del huésped")
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = fechaEntrada,
+                    onValueChange = {
+                        fechaEntrada = it
+                        errorFechas = null
+                    },
+                    label = {
+                        Text("Fecha de entrada")
+                    },
+                    placeholder = {
+                        Text("AAAA-MM-DD")
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = fechaSalida,
+                    onValueChange = {
+                        fechaSalida = it
+                        errorFechas = null
+                    },
+                    label = {
+                        Text("Fecha de salida")
+                    },
+                    placeholder = {
+                        Text("AAAA-MM-DD")
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                errorFechas?.let { mensaje ->
+                    Text(
+                        text = mensaje,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val error = validarFechasReserva(
+                        fechaEntrada.trim(),
+                        fechaSalida.trim()
+                    )
+
+                    if (error == null) {
+                        onGuardar(
+                            reserva.copy(
+                                nombreHuesped = nombreHuesped.trim(),
+                                fechaEntrada = fechaEntrada.trim(),
+                                fechaSalida = fechaSalida.trim()
+                            )
+                        )
+                    } else {
+                        errorFechas = error
+                    }
+                },
+                enabled =
+                    nombreHuesped.isNotBlank() &&
+                            fechaEntrada.isNotBlank() &&
+                            fechaSalida.isNotBlank()
+            ) {
+                Text("Guardar cambios")
+            }
+        },
+
+        dismissButton = {
+            TextButton(
+                onClick = onCerrar
+            ) {
+                Text("Cancelar")
+            }
+        }
+    )
 }
